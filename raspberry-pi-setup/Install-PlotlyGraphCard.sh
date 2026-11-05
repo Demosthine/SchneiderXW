@@ -4,7 +4,7 @@
 # Container and register its Lovelace resource.
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "\${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 HELPER="$SCRIPT_DIR/PlotlyGraphCard.sh"
 [[ -f "$HELPER" ]] || { echo "ERROR: Shared helper not found: $HELPER" >&2; exit 1; }
 source "$HELPER"
@@ -18,7 +18,7 @@ for command_name in curl python3 install; do
 done
 
 if [[ "$EUID" -eq 0 ]]; then
-    TARGET_USER="\${SUDO_USER:-}"
+    TARGET_USER="${SUDO_USER:-}"
     [[ -n "$TARGET_USER" && "$TARGET_USER" != "root" ]] || die "When run as root, use sudo from the normal Home Assistant owner account."
 else
     TARGET_USER="$(id -un)"
@@ -32,7 +32,7 @@ CONFIG_YAML="$CONFIG_DIR/configuration.yaml"
 TARGET_DIR="$CONFIG_DIR/www/plotly-graph-card"
 [[ -f "$CONFIG_YAML" ]] || die "Home Assistant configuration not found: $CONFIG_YAML"
 
-WORK_DIR="$(mktemp -d "\${TMPDIR:-/tmp}/plotly-graph-card.XXXXXX")"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/plotly-graph-card.XXXXXX")"
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
