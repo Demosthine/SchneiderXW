@@ -253,7 +253,7 @@ RESOURCE_URLS=(
     /local/power-flow-card-plus.js
     /local/wallpanel.js
 )
-if grep -Eq '^[[:space:]]*lovelace:[[:space:]]*(#.*)?$' "$CONFIG_YAML"; then
+if grep -Eq '^lovelace:' "$CONFIG_YAML"; then
     if ! grep -Eq '^[[:space:]]{2}resource_mode:[[:space:]]*yaml([[:space:]]|$)' "$CONFIG_YAML"; then
         die "An existing lovelace: section does not already use resource_mode: yaml. The installer will not change existing dashboard/resource mode automatically."
     fi
