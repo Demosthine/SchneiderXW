@@ -10,10 +10,10 @@ plotly_stage_release() {
     mkdir -p "$dest_dir"
     curl -fsSL --retry 3 -H 'Accept: application/vnd.github+json' \
         "https://api.github.com/repos/$PLOTLY_GRAPH_CARD_REPO/releases/tags/$PLOTLY_GRAPH_CARD_VERSION" -o "$metadata"
-    python3 - "$metadata" "$asset_list" <<'PY'
+    python3 - "$metadata" "$asset_list" "$PLOTLY_GRAPH_CARD_VERSION" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as f: release = json.load(f)
-if release.get("tag_name") != "v4.0.2": raise SystemExit("Unexpected Plotly release tag.")
+if release.get("tag_name") != sys.argv[3]: raise SystemExit("Unexpected Plotly release tag.")
 assets = [a for a in release.get("assets", []) if a.get("name", "").endswith(".js")]
 names = [a["name"] for a in assets]
 if not assets or "plotly-graph-card.js" not in names: raise SystemExit("Release is missing Plotly JavaScript assets or its entry point.")
@@ -22,7 +22,7 @@ with open(sys.argv[2], "w", encoding="utf-8") as f:
         n, u = a["name"], a.get("browser_download_url", "")
         if not u or "/" in n or "\t" in n or "\n" in n: raise SystemExit("Invalid release asset metadata.")
         f.write(n + "\t" + u + "\n")
-print("Release v4.0.2 JavaScript asset count:", len(assets))
+print("Release", sys.argv[3], "JavaScript asset count:", len(assets))
 PY
     while IFS=$'\t' read -r asset_name asset_url; do
         [[ -n "$asset_name" && -n "$asset_url" ]] || { echo "Invalid Plotly asset metadata." >&2; return 1; }
