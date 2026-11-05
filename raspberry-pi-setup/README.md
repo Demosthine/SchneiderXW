@@ -55,6 +55,8 @@ Recommended key settings for this Raspberry Pi:
 - **Pre-approved:** On if your tailnet requires device approval.
 - **Expiration:** A short validity window, such as one day. The one-time key is revoked after successful use; the device remains authenticated using its own node identity.
 
+**Identity and access:** An untagged auth key registers the Pi as the user who generated the key, so that user's tailnet access rules apply. Generate it from the intended account. Only add a device tag if your tailnet's tag ownership and access-control policy are already configured for it.
+
 When the master installer reaches the Tailscale step, paste the key at the hidden terminal prompt. The key is not echoed, logged, committed to GitHub, or saved as a persistent file. The installer writes it briefly to a root-only temporary file under `/run` and deletes that file immediately after successful enrollment; an exit cleanup also removes it if setup fails.
 
 If the Pi is already authenticated with Tailscale, no key is requested. The script simply configures the advertised LAN route. The standalone installer follows the same behavior. It detects the default IPv4 interface and LAN subnet, and stops unless the subnet is /24. It enables IPv4/IPv6 forwarding and configures Tailscale to advertise the LAN route.
