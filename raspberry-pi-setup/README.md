@@ -11,6 +11,7 @@ Bash setup and maintenance scripts for Raspberry Pi OS. Scripts display output i
 | `Install-Tailscale.sh` | Configure the Pi as a Tailscale IPv4 /24 subnet router | `/var/log/install-tailscale.log` |
 | `Install-Docker.sh` | Install Docker Engine, containerd, and Docker Compose | `/var/log/install-docker.log` |
 | `Install-HomeAssistant.sh` | Deploy Home Assistant Container using the installed Docker Engine | `/var/log/install-homeassistant.log` |
+| `Install-HADashboardResources.sh` | Independently install and validate the eight dashboard JavaScript resources without reinstalling host services | `/var/log/install-ha-dashboard-resources.log` |
 | `Configure-SchneiderXW.sh` | Create SchneiderXW YAML folders, migrate existing configuration, set Recorder options, and validate downloaded configuration files | `/var/log/configure-schneiderxw.log` |
 
 ## Master installation
@@ -25,6 +26,7 @@ bash -n Remove-Cups.sh
 bash -n Install-Tailscale.sh
 bash -n Install-Docker.sh
 bash -n Install-HomeAssistant.sh
+bash -n Install-HADashboardResources.sh
 bash -n Configure-SchneiderXW.sh
 sudo bash ./Install-RaspberryPi.sh
 ```
@@ -175,6 +177,19 @@ sudo bash ./Install-HomeAssistant.sh
 ```
 
 The master installer handles Samba and resource preloading after the Home Assistant onboarding pause.
+
+### Standalone dashboard resource installation
+
+To install or refresh the eight dashboard JavaScript resources after Home Assistant has already been installed and onboarded, run:
+
+```bash
+cd ~/SchneiderXW/raspberry-pi-setup
+bash -n Install-HADashboardResources.sh
+sudo bash ./Install-HADashboardResources.sh
+```
+
+This standalone script does not reinstall Docker, reconfigure Tailscale, modify Samba, or restart Home Assistant. It stages and verifies all eight downloads before installing them, backs up any replaced resource files, and backs up `configuration.yaml` before adding YAML resource mode when no top-level `lovelace:` section exists. If a `lovelace:` section already exists, it preserves it only when all eight resource URLs are already present; otherwise it stops without changing files. It runs Home Assistant's configuration check and does not restart Home Assistant. The log is `/var/log/install-ha-dashboard-resources.log`.
+
 
 ### Install Docker and Home Assistant
 
