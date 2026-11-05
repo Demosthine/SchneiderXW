@@ -1,53 +1,106 @@
 # Raspberry Pi Setup Scripts
 
-Bash setup and maintenance scripts for Raspberry Pi OS. Each installer displays output in the terminal and appends the same output to a protected log file.
+Bash setup and maintenance scripts for Raspberry Pi OS. Scripts display output in the terminal and append it to protected log files. They do not automatically reboot the Pi.
 
 ## Scripts
 
 | Script | Purpose | Log |
 |---|---|---|
-| `Install-RaspberryPi.sh` | Master installer: Home Assistant, private Samba share, and the eight requested dashboard JavaScript files | `/var/log/install-raspberrypi.log` |
-| `Remove-Cups.sh` | Stop and remove CUPS services and installed CUPS/printer-driver packages | `/var/log/remove-cups.log` |
-| `Install-Tailscale.sh` | Configure the Pi as a Tailscale IPv4 /24 subnet router | `/var/log/install-tailscale.log` |
+| `Install-RaspberryPi.sh` | Master workflow: Home Assistant, Samba, optional CUPS removal, conditional Tailscale setup, dashboard JavaScript files, and YAML resource registration | `/var/log/install-raspberrypi.log` |
 | `Install-HomeAssistant.sh` | Install Docker Engine/Compose and deploy Home Assistant Container | `/var/log/install-homeassistant.log` |
+| `Install-Tailscale.sh` | Configure the Pi as a Tailscale IPv4 /24 subnet router | `/var/log/install-tailscale.log` |
+| `Remove-Cups.sh` | Stop and remove CUPS services and installed CUPS/printer-driver packages | `/var/log/remove-cups.log` |
 
 ## Master installation
 
-Clone the authorized repository and run the master installer from the setup directory:
+On the Raspberry Pi, clone the authorized repository and run:
 
 ```bash
 git clone https://github.com/Demosthine/SchneiderXW.git
 cd SchneiderXW/raspberry-pi-setup
+bash -n Install-RaspberryPi.sh
+bash -n Install-HomeAssistant.sh
+bash -n Install-Tailscale.sh
+bash -n Remove-Cups.sh
 sudo bash ./Install-RaspberryPi.sh
 ```
 
 The master installer:
 
-1. Runs the maintained `Install-HomeAssistant.sh` script.
-2. Installs Git, Samba, and ACL utilities.
-3. Creates a private `HomeAssistant` Samba share for the invoking Linux user. On first setup, it prompts for a Samba password; an existing Samba account and password are preserved.
-4. Clones the eight dashboard-card repositories from GitHub and installs their JavaScript files under `~/homeassistant/config/www/`.
-5. Backs up any card files it replaces under `/var/backups/`.
-6. Restarts Home Assistant, detects the Pi's LAN IPv4 address, and displays the IP-based Home Assistant URL and Windows UNC share path.
+1. Runs `Install-HomeAssistant.sh` to install Docker and deploy Home Assistant Container.
+2. Offers CUPS removal only after an interactive confirmation. CUPS removal uninstalls printing services and printer-driver packages. In a non-interactive run it skips CUPS removal; run `sudo bash ./Remove-Cups.sh` separately if required.
+3. Runs `Install-Tailscale.sh` automatically only when `/root/tailscale-authkey` exists and is non-empty. Otherwise it skips Tailscale.
+4. Creates a private authenticated Samba share named `HomeAssistant`. On first setup it prompts for a Samba password; an existing Samba account/password is preserved.
+5. Clones the eight dashboard-card repositories from GitHub and stages their JavaScript files before installing them under `~/homeassistant/config/www/`.
+6. Backs up replaced card files under `/var/backups/`.
+7. Adds the eight resources to `configuration.yaml` under `lovelace:`, using `resource_mode: yaml` and `type: module`. It backs up the file before editing and validates the configuration before restarting Home Assistant.
+8. Restarts Home Assistant, detects the Pi's LAN IPv4 address, and displays the IP-based Home Assistant URL and Windows UNC share path.
 
-The master installer does not pull Home Assistant configuration templates in this version. That feature will be added in a later update. It does not run the CUPS removal or Tailscale installer.
+Configuration-template downloads are intentionally deferred. The installer does not change unrelated repository files or perform an automatic reboot.
 
-### Dashboard resources
+### CUPS safety
 
-After Home Assistant onboarding, add each resource under **Settings → Dashboards → Resources**. Set each resource type to **JavaScript Module**.
+CUPS removal is destructive to printing functionality. The master installer asks before running it. The standalone script can also be run separately.
 
-| Resource URL |
-|---|
-| `/local/bubble-card.js` |
-| `/local/gauge-card-pro.js` |
-| `/local/kiosk-mode.js` |
-| `/local/layout-card.js` |
-| `/local/mushroom.js` |
-| `/local/plotly-graph-card/plotly-graph-card.js` |
-| `/local/power-flow-card-plus.js` |
-| `/local/wallpanel.js` |
+The CUPS script purges installed CUPS/printer-driver packages, stops and disables CUPS services, removes CUPS configuration/log/cache directories, and verifies removal. It deliberately does **not** run `apt autoremove`, because that operation can remove unrelated packages APT considers unused. It does not remove `/var/spool/cups`, which may contain print queue data.
 
-The JavaScript files are installed automatically, but Home Assistant dashboard resource registration remains a manual step. The installer cannot safely assume whether the dashboard is using storage mode or YAML mode.
+### Tailscale setup
+
+To have the master installer configure Tailscale, first create an auth key and store it at `/root/tailscale-authkey` with root ownership and mode 600:
+
+```bash
+sudo install -o root -g root -m 600 /dev/null /root/tailscale-authkey
+sudo nano /root/tailscale-authkey
+```
+
+Paste the auth key into the file without adding it to GitHub or the installer. The master script detects the file and runs `Install-Tailscale.sh`. The standalone Tailscale installer detects the default IPv4 interface and LAN subnet, and stops unless the subnet is /24. It enables IPv4/IPv6 forwarding and configures Tailscale to advertise the LAN route.
+
+**Manual step:** Approve the advertised subnet route in the Tailscale admin console unless your tailnet policy automatically approves it: https://login.tailscale.com/admin/machines
+
+Remove the auth key file after enrollment if it is no longer needed. The key file is never copied into the repository.
+
+### Dashboard resources in configuration.yaml
+
+The installer installs these files:
+
+| Resource URL | Installed file |
+|---|---|
+| `/local/bubble-card.js` | `www/bubble-card.js` |
+| `/local/gauge-card-pro.js` | `www/gauge-card-pro.js` |
+| `/local/kiosk-mode.js` | `www/kiosk-mode.js` |
+| `/local/layout-card.js` | `www/layout-card.js` |
+| `/local/mushroom.js` | `www/mushroom.js` |
+| `/local/plotly-graph-card/plotly-graph-card.js` | `www/plotly-graph-card/plotly-graph-card.js` |
+| `/local/power-flow-card-plus.js` | `www/power-flow-card-plus.js` |
+| `/local/wallpanel.js` | `www/wallpanel.js` |
+
+It adds the following structure to `configuration.yaml` when no top-level `lovelace:` section already exists:
+
+```yaml
+lovelace:
+  resource_mode: yaml
+  resources:
+    - url: /local/bubble-card.js
+      type: module
+    - url: /local/gauge-card-pro.js
+      type: module
+    - url: /local/kiosk-mode.js
+      type: module
+    - url: /local/layout-card.js
+      type: module
+    - url: /local/mushroom.js
+      type: module
+    - url: /local/plotly-graph-card/plotly-graph-card.js
+      type: module
+    - url: /local/power-flow-card-plus.js
+      type: module
+    - url: /local/wallpanel.js
+      type: module
+```
+
+**Existing Lovelace configuration:** The installer will not silently convert an existing storage-mode dashboard or merge into an existing partial Lovelace section. If it finds an existing `lovelace:` section that does not already contain all eight YAML resources, it stops and preserves the file. This avoids silently dropping resources that may be stored in Home Assistant's UI-managed storage. Existing YAML resources must be reviewed and migrated deliberately before rerunning.
+
+Home Assistant's current documentation confirms that YAML-managed resources require `resource_mode: yaml`; the resources are loaded as JavaScript modules. After editing YAML, reload dashboard resources or restart Home Assistant. See [Home Assistant dashboard resources](https://www.home-assistant.io/dashboards/dashboards/) and [reload dashboard resources](https://www.home-assistant.io/actions/lovelace.reload_resources/).
 
 ### Samba access from Windows
 
@@ -57,7 +110,7 @@ Use the UNC path printed by the installer, in this form:
 \\<raspberry-pi-ip>\HomeAssistant
 ```
 
-Sign in with the Linux username that ran the installer and the Samba password. The share is authenticated and private. The installer uses ACLs and Samba masks; it does not use world-writable `777` permissions.
+Sign in with the Linux username that ran the installer and the Samba password. The share is private and authenticated. ACLs and Samba masks are used; the installer does not apply world-writable `777` permissions.
 
 ## Individual scripts
 
@@ -69,25 +122,9 @@ sudo bash ./Install-Tailscale.sh
 sudo bash ./Remove-Cups.sh
 ```
 
-### Remove CUPS
-
-Stops/disables CUPS services and sockets, purges installed CUPS-related and printer-driver packages, removes CUPS configuration/log/cache directories, and verifies removal.
-
-**Important:** `apt-get autoremove -y` may remove other packages APT considers unused. Review package dependencies and system state first. The script does not remove `/var/spool/cups`, which may contain print queue data. This is a separate, potentially destructive maintenance action and is not run by the master installer.
-
-### Install Tailscale subnet routing
-
-Before running the script, create a Tailscale auth key and store it in the root-only file `/root/tailscale-authkey`. Do not place the key in the script or commit it to Git. Set ownership to root and permissions to 600.
-
-The installer detects the default IPv4 interface and LAN subnet, and stops unless the subnet is /24. It enables IPv4/IPv6 forwarding, installs Tailscale if needed, and authenticates using the protected key file. If the node is already connected, it updates only the requested preferences.
-
-**Manual step:** Approve the advertised subnet route in the Tailscale admin console unless your tailnet policy automatically approves it: https://login.tailscale.com/admin/machines
-
-Remove the key file after enrollment if it is no longer needed.
-
 ### Install Home Assistant Container
 
-Run from the normal user account using sudo. The script identifies the invoking user, updates the OS, installs Docker Engine and Compose from Docker's Debian APT repository, enables Docker/containerd, adds that user to the docker group, and deploys Home Assistant.
+The script identifies the invoking user, updates the OS, installs Docker Engine and Compose from Docker's Debian APT repository, enables Docker/containerd, adds that user to the docker group, and deploys Home Assistant.
 
 Home Assistant data is stored under `~/homeassistant/` with `compose.yaml` and a persistent `config/` directory. The Compose service uses host networking, privileged mode, read-only localtime and D-Bus mounts, the stable Home Assistant image, restart unless-stopped, and the `America/Phoenix` timezone.
 
@@ -95,29 +132,32 @@ Home Assistant data is stored under `~/homeassistant/` with `compose.yaml` and a
 
 The script does not automatically remove conflicting Docker/containerd packages or overwrite an existing Compose file. It supports Bookworm and Trixie, on arm64 or armhf, and stops on other detected releases or architectures.
 
-## Requirements, logging, and validation
+## Validation and logs
 
-- Raspberry Pi OS or Debian Bookworm/Trixie on arm64 or armhf.
-- Bash, sudo access, and internet access during installation.
-- Review each script and its effects before running it.
-- The scripts do not reboot the Pi automatically.
+- Supported OS: Raspberry Pi OS or Debian Bookworm/Trixie, arm64 or armhf.
+- Requires sudo access and internet access during installation.
+- Logs are stored under `/var/log` with mode 600.
+- No script automatically reboots the Pi.
+- The scripts have not been integration-tested on physical Raspberry Pi hardware as part of this update.
 
-Logs are created under `/var/log` with mode 600. Run syntax checks:
+Check shell syntax before execution:
 
 ```bash
 bash -n Install-RaspberryPi.sh
-bash -n Remove-Cups.sh
-bash -n Install-Tailscale.sh
 bash -n Install-HomeAssistant.sh
+bash -n Install-Tailscale.sh
+bash -n Remove-Cups.sh
 ```
 
-A successful `bash -n` check verifies shell syntax only. It does not install packages, authenticate Tailscale, deploy Home Assistant, or prove operation on Raspberry Pi hardware. The master installer has not been integration-tested on a physical Raspberry Pi as part of this release.
+A successful `bash -n` check verifies shell syntax only. It does not verify package installation, Docker deployment, Tailscale route approval, Samba access, or Home Assistant startup.
 
 ## Official references
 
+- [Home Assistant dashboard resources](https://www.home-assistant.io/dashboards/dashboards/)
+- [Home Assistant reload dashboard resources](https://www.home-assistant.io/actions/lovelace.reload_resources/)
+- [Home Assistant configuration.yaml](https://www.home-assistant.io/docs/configuration/)
 - [Tailscale up command](https://tailscale.com/docs/reference/tailscale-cli/up)
 - [Tailscale subnet routers](https://tailscale.com/docs/features/subnet-routers)
 - [Docker Engine installation on Debian](https://docs.docker.com/engine/install/debian/)
 - [Docker Engine installation on Raspberry Pi OS](https://docs.docker.com/engine/install/raspberry-pi-os/)
 - [Home Assistant Container installation](https://www.home-assistant.io/installation/linux/)
-- [Home Assistant dashboard resources](https://www.home-assistant.io/dashboards/dashboards/)
