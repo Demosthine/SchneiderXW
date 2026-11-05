@@ -45,7 +45,9 @@ if ! grep -Fq -- "- url: $PLOTLY_GRAPH_CARD_RESOURCE" "$CONFIG_YAML"; then
     cp -a "$CONFIG_YAML" "$CONFIG_BACKUP"
 fi
 
-plotly_install_bundle_atomic "$WORK_DIR/bundle" "$TARGET_DIR" "$TARGET_USER"
+OWNER_SPEC=""
+if [[ "$EUID" -eq 0 ]]; then OWNER_SPEC="$TARGET_USER:$(id -gn "$TARGET_USER")"; fi
+plotly_install_bundle_atomic "$WORK_DIR/bundle" "$TARGET_DIR" "$OWNER_SPEC"
 if ! plotly_ensure_lovelace_resource "$CONFIG_YAML"; then
     log "Lovelace registration failed. The Plotly bundle remains installed; review configuration.yaml."
     exit 1
