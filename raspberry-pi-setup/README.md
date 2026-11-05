@@ -6,10 +6,11 @@ Bash setup and maintenance scripts for Raspberry Pi OS. Scripts display output i
 
 | Script | Purpose | Log |
 |---|---|---|
-| `Install-RaspberryPi.sh` | Master workflow: Home Assistant, Samba, optional CUPS removal, conditional Tailscale setup, dashboard JavaScript files, and YAML resource registration | `/var/log/install-raspberrypi.log` |
-| `Install-HomeAssistant.sh` | Install Docker Engine/Compose and deploy Home Assistant Container | `/var/log/install-homeassistant.log` |
-| `Install-Tailscale.sh` | Configure the Pi as a Tailscale IPv4 /24 subnet router | `/var/log/install-tailscale.log` |
+| `Install-RaspberryPi.sh` | Master workflow: CUPS, Tailscale, Docker, Home Assistant/onboarding, Samba, dashboard resource preloading | `/var/log/install-raspberrypi.log` |
 | `Remove-Cups.sh` | Stop and remove CUPS services and installed CUPS/printer-driver packages | `/var/log/remove-cups.log` |
+| `Install-Tailscale.sh` | Configure the Pi as a Tailscale IPv4 /24 subnet router | `/var/log/install-tailscale.log` |
+| `Install-Docker.sh` | Install Docker Engine, containerd, and Docker Compose | `/var/log/install-docker.log` |
+| `Install-HomeAssistant.sh` | Deploy Home Assistant Container using the installed Docker Engine | `/var/log/install-homeassistant.log` |
 
 ## Master installation
 
@@ -19,24 +20,23 @@ On the Raspberry Pi, clone the authorized repository and run:
 git clone https://github.com/Demosthine/SchneiderXW.git
 cd SchneiderXW/raspberry-pi-setup
 bash -n Install-RaspberryPi.sh
-bash -n Install-HomeAssistant.sh
-bash -n Install-Tailscale.sh
 bash -n Remove-Cups.sh
+bash -n Install-Tailscale.sh
+bash -n Install-Docker.sh
+bash -n Install-HomeAssistant.sh
 sudo bash ./Install-RaspberryPi.sh
 ```
 
-The master installer:
+The master installer follows this sequence:
 
-1. Runs `Install-HomeAssistant.sh` to install Docker and deploy Home Assistant Container.
-2. Offers CUPS removal only after an interactive confirmation. CUPS removal uninstalls printing services and printer-driver packages. In a non-interactive run it skips CUPS removal; run `sudo bash ./Remove-Cups.sh` separately if required.
-3. Runs `Install-Tailscale.sh` automatically only when `/root/tailscale-authkey` exists and is non-empty. Otherwise it skips Tailscale.
-4. Creates a private authenticated Samba share named `HomeAssistant`. On first setup it prompts for a Samba password; an existing Samba account/password is preserved.
-5. Clones the eight dashboard-card repositories from GitHub and stages their JavaScript files before installing them under `~/homeassistant/config/www/`.
-6. Backs up replaced card files under `/var/backups/`.
-7. Adds the eight resources to `configuration.yaml` under `lovelace:`, using `resource_mode: yaml` and `type: module`. It backs up the file before editing and validates the configuration before restarting Home Assistant.
-8. Restarts Home Assistant, detects the Pi's LAN IPv4 address, and displays the IP-based Home Assistant URL and Windows UNC share path.
+1. **Remove CUPS:** asks for explicit interactive confirmation before uninstalling printing services and printer-driver packages. A non-interactive run skips this step.
+2. **Install Tailscale:** runs `Install-Tailscale.sh` when `/root/tailscale-authkey` exists and is non-empty; otherwise Tailscale is skipped.
+3. **Install Docker:** runs `Install-Docker.sh` to install and enable Docker Engine, containerd, and Compose.
+4. **Install Home Assistant and onboard:** runs `Install-HomeAssistant.sh`, waits for Home Assistant to respond, and pauses so you can complete first-run onboarding in a browser.
+5. **Install Samba:** creates the private authenticated `HomeAssistant` share. On first setup it prompts for a Samba password; an existing Samba account/password is preserved.
+6. **Pre-load resources:** clones and stages the eight dashboard-card repositories, backs up replaced files, installs the JavaScript files under `~/homeassistant/config/www/`, and registers them in `configuration.yaml`. The configuration is checked before Home Assistant is restarted.
 
-Configuration-template downloads are intentionally deferred. The installer does not change unrelated repository files or perform an automatic reboot.
+The installer does not silently switch an existing Lovelace storage configuration to YAML mode. Configuration-template downloads remain deferred. No unrelated repository files are changed and no automatic reboot is performed.
 
 ### CUPS safety
 
@@ -114,23 +114,26 @@ Sign in with the Linux username that ran the installer and the Samba password. T
 
 ## Individual scripts
 
-Run scripts with Bash, not `sh`:
+Run scripts with Bash, not `sh`. The standalone dependency order is:
 
 ```bash
-sudo bash ./Install-HomeAssistant.sh
-sudo bash ./Install-Tailscale.sh
 sudo bash ./Remove-Cups.sh
+sudo bash ./Install-Tailscale.sh
+sudo bash ./Install-Docker.sh
+sudo bash ./Install-HomeAssistant.sh
 ```
 
-### Install Home Assistant Container
+The master installer handles Samba and resource preloading after the Home Assistant onboarding pause.
 
-The script identifies the invoking user, updates the OS, installs Docker Engine and Compose from Docker's Debian APT repository, enables Docker/containerd, adds that user to the docker group, and deploys Home Assistant.
+### Install Docker and Home Assistant
 
-Home Assistant data is stored under `~/homeassistant/` with `compose.yaml` and a persistent `config/` directory. The Compose service uses host networking, privileged mode, read-only localtime and D-Bus mounts, the stable Home Assistant image, restart unless-stopped, and the `America/Phoenix` timezone.
+`Install-Docker.sh` updates OS packages, installs Docker Engine and Compose from Docker's Debian APT repository, enables Docker/containerd, and adds the invoking user to the docker group. It does not deploy Home Assistant.
+
+`Install-HomeAssistant.sh` requires Docker and the Compose plugin to be installed and active. It creates `~/homeassistant/compose.yaml` only if absent, then pulls and starts Home Assistant Container. The service uses host networking, privileged mode, read-only localtime and D-Bus mounts, the stable Home Assistant image, restart unless-stopped, and the `America/Phoenix` timezone.
 
 **Security:** Membership in the docker group effectively grants root-level control of the host. Add only trusted users. Log out and back in before expecting new group membership to apply.
 
-The script does not automatically remove conflicting Docker/containerd packages or overwrite an existing Compose file. It supports Bookworm and Trixie, on arm64 or armhf, and stops on other detected releases or architectures.
+The Docker installer does not automatically remove conflicting Docker/containerd packages. Both installers support Bookworm and Trixie, on arm64 or armhf, and stop on other detected releases or architectures.
 
 ## Connect from Windows for validation
 
