@@ -264,24 +264,12 @@ if [[ ! -t 0 ]]; then
 fi
 
 while true; do
-    read -r -p "Have you downloaded and placed the SchneiderXW YAML files in all six folders? [y/N]: " answer
+    read -r -p "Have you downloaded and placed the SchneiderXW YAML files needed for this installation? [y/N]: " answer
     [[ "$answer" =~ ^[Yy]$ ]] && break
     printf 'Download and organize the files, then answer Y.\n'
 done
 
-missing=0
-for folder in Automations InputBooleans InputSelects ModBus503 Scripts Templates; do
-    count="$(find "$CONFIG_DIR/$folder" -maxdepth 1 -type f \( -iname '*.yaml' -o -iname '*.yml' \) -size +0c | wc -l)"
-    if ((count == 0)); then
-        printf 'MISSING: No non-empty YAML file found in %s\n' "$CONFIG_DIR/$folder"
-        missing=1
-    else
-        log "$folder: found $count non-empty YAML file(s)."
-    fi
-done
-((missing == 0)) || die "One or more folders are missing YAML files. Download the files and rerun this script."
-
-log "Validating Home Assistant configuration."
+log "Download confirmation received. Empty folders are permitted; file placement depends on this installation."\n\nlog "Validating Home Assistant configuration."
 if ! docker compose -f "$COMPOSE_FILE" exec -T homeassistant python -m homeassistant --script check_config --config /config; then
     die "Home Assistant configuration validation failed. The backup is available at $BACKUP. Review the reported YAML errors before restarting."
 fi
