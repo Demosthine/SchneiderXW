@@ -53,9 +53,43 @@ COMPOSE_FILE="$HA_DIR/compose.yaml"
 
 log "Starting Raspberry Pi setup for user $TARGET_USER."
 log "Configuration-template downloads are intentionally deferred."
-log "Installing Home Assistant with the existing installer."
-SUDO_USER="$TARGET_USER" bash "$HA_INSTALLER"
 
+# Step 1: Remove CUPS (only after explicit confirmation).
+# CUPS removal is destructive to printing functionality, so require an explicit
+# interactive confirmation. Non-interactive runs leave CUPS untouched.
+if [[ -t 0 ]]; then
+    printf '\nCUPS removal will uninstall printing services and printer-driver packages.\n'
+    read -r -p "Remove CUPS from this Raspberry Pi? [y/N]: " REMOVE_CUPS_ANSWER
+    if [[ "$REMOVE_CUPS_ANSWER" =~ ^[Yy]$ ]]; then
+        log "Running the CUPS removal script."
+        bash "$CUPS_INSTALLER"
+    else
+        log "CUPS removal was declined; the standalone script remains available."
+    fi
+else
+    log "Non-interactive session: CUPS removal was skipped. Run sudo bash ./Remove-Cups.sh separately if desired."
+fi
+
+
+# Step 2: Install Tailscale when the protected authentication key is provisioned.
+# Tailscale is configured automatically only when its protected auth-key file
+# has already been provisioned. No key is created, printed, or stored by this script.
+if [[ -s /root/tailscale-authkey ]]; then
+    log "Found /root/tailscale-authkey; running the Tailscale subnet-router installer."
+    bash "$TAILSCALE_INSTALLER"
+else
+    log "No /root/tailscale-authkey found; Tailscale setup was skipped."
+    log "To include it, place a root-owned mode-600 auth key at /root/tailscale-authkey and rerun the master installer."
+fi
+
+
+# Step 3: Install Docker.
+log "Step 3/6: Installing Docker."
+SUDO_USER="$TARGET_USER" bash "$DOCKER_INSTALLER"
+
+# Step 4: Install Home Assistant and pause for first-run onboarding.
+log "Step 4/6: Installing Home Assistant."
+SUDO_USER="$TARGET_USER" bash "$HA_INSTALLER"
 [[ -d "$CONFIG_DIR" && -f "$COMPOSE_FILE" ]] || die "Home Assistant configuration directory or Compose file is missing after installation."
 
 CONFIG_YAML="$CONFIG_DIR/configuration.yaml"
@@ -75,8 +109,7 @@ RESOURCE_URLS=(
     /local/power-flow-card-plus.js
     /local/wallpanel.js
 )
-# Preflight existing Lovelace configuration before changing packages, Samba,
-# or card files. Storage-mode resources must be migrated deliberately.
+# Do not silently change existing dashboard resource mode or discard storage resources.
 if grep -Eq '^lovelace:' "$CONFIG_YAML"; then
     if ! grep -Eq '^[[:space:]]{2}resource_mode:[[:space:]]*yaml([[:space:]]|$)' "$CONFIG_YAML"; then
         die "An existing lovelace: section does not already use resource_mode: yaml. The installer will not change existing dashboard/resource mode automatically."
@@ -87,31 +120,29 @@ if grep -Eq '^lovelace:' "$CONFIG_YAML"; then
     done
 fi
 
-# CUPS removal is destructive to printing functionality, so require an explicit
-# interactive confirmation. Non-interactive runs leave CUPS untouched.
-if [[ -t 0 ]]; then
-    printf '\nCUPS removal will uninstall printing services and printer-driver packages.\n'
-    read -r -p "Remove CUPS from this Raspberry Pi? [y/N]: " REMOVE_CUPS_ANSWER
-    if [[ "$REMOVE_CUPS_ANSWER" =~ ^[Yy]$ ]]; then
-        log "Running the CUPS removal script."
-        bash "$CUPS_INSTALLER"
-    else
-        log "CUPS removal was declined; the standalone script remains available."
+LAN_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+[[ -n "$LAN_IP" ]] || LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+[[ -n "$LAN_IP" ]] || die "Could not determine the Raspberry Pi LAN IPv4 address."
+HA_URL="http://$LAN_IP:8123"
+log "Waiting up to 180 seconds for Home Assistant to respond for first-run onboarding."
+ready=0
+for ((attempt=1; attempt<=60; attempt++)); do
+    if curl -fsS --max-time 3 "$HA_URL/" >/dev/null 2>&1; then
+        ready=1
+        break
     fi
+    sleep 3
+done
+((ready)) || die "Home Assistant did not respond at $HA_URL. Inspect: cd \"$HA_DIR\" && docker compose logs --tail=100 homeassistant"
+printf '\nHome Assistant is available at: %s\n' "$HA_URL"
+if [[ -t 0 ]]; then
+    read -r -p "Complete Home Assistant onboarding in your browser, then press Enter to continue with Samba: " _
 else
-    log "Non-interactive session: CUPS removal was skipped. Run sudo bash ./Remove-Cups.sh separately if desired."
+    die "Non-interactive run cannot pause for onboarding. Complete onboarding at $HA_URL, then rerun the master installer."
 fi
 
-# Tailscale is configured automatically only when its protected auth-key file
-# has already been provisioned. No key is created, printed, or stored by this script.
-if [[ -s /root/tailscale-authkey ]]; then
-    log "Found /root/tailscale-authkey; running the Tailscale subnet-router installer."
-    bash "$TAILSCALE_INSTALLER"
-else
-    log "No /root/tailscale-authkey found; Tailscale setup was skipped."
-    log "To include it, place a root-owned mode-600 auth key at /root/tailscale-authkey and rerun the master installer."
-fi
-
+# Step 5: Install Samba.
+log "Step 5/6: Installing Samba and configuring the private share."
 log "Installing prerequisites for Samba and GitHub repository pulls."
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y git curl python3 samba samba-common-bin acl
@@ -190,6 +221,9 @@ systemctl enable --now smbd
 systemctl restart smbd
 systemctl is-active --quiet smbd || die "Samba service is not active."
 
+
+# Step 6: Pre-load dashboard resources.
+log "Step 6/6: Pre-loading dashboard resources."
 # Stage all eight repositories and validate every artifact before changing config/www.
 log "Cloning the eight Home Assistant dashboard-card repositories."
 WORK_DIR="$(mktemp -d /tmp/ha-cards.XXXXXX)"
@@ -329,9 +363,4 @@ fi
 printf '\nThe eight dashboard resources are configured in configuration.yaml using resource_mode: yaml.\n'
 printf 'If the installer found an existing incompatible Lovelace resource configuration, it stopped before changing it.\n'
 printf '\n'
-if [[ -t 0 ]]; then
-    read -r -p "Complete Home Assistant onboarding in your browser, then press Enter to finish: " _
-else
-    log "Non-interactive session: complete Home Assistant onboarding manually using $HA_URL."
-fi
 log "Setup complete. No reboot was performed."
