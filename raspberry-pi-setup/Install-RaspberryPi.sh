@@ -71,16 +71,10 @@ else
 fi
 
 
-# Step 2: Install Tailscale when the protected authentication key is provisioned.
-# Tailscale is configured automatically only when its protected auth-key file
-# has already been provisioned. No key is created, printed, or stored by this script.
-if [[ -s /root/tailscale-authkey ]]; then
-    log "Found /root/tailscale-authkey; running the Tailscale subnet-router installer."
-    bash "$TAILSCALE_INSTALLER"
-else
-    log "No /root/tailscale-authkey found; Tailscale setup was skipped."
-    log "To include it, place a root-owned mode-600 auth key at /root/tailscale-authkey and rerun the master installer."
-fi
+# Step 2: Configure Tailscale. The installer skips the key prompt when
+# this device is already authenticated; otherwise it securely prompts once.
+log "Step 2/6: Configuring Tailscale."
+SUDO_USER="$TARGET_USER" bash "$TAILSCALE_INSTALLER"
 
 
 # Step 3: Install Docker.
