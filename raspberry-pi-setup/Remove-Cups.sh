@@ -52,9 +52,7 @@ else
     log "No installed CUPS-related packages were detected."
 fi
 
-log "Running apt-get autoremove -y."
-log "WARNING: autoremove can remove other packages that APT considers unused."
-apt-get autoremove -y
+log "Skipping apt autoremove to avoid removing unrelated packages."
 
 for directory in /etc/cups /var/log/cups /var/cache/cups; do
     if [[ -e "$directory" ]]; then
