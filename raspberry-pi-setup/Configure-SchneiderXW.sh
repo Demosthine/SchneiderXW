@@ -240,7 +240,7 @@ else:
 # Consolidate the top-level YAML include declarations in alphabetical order.
 # Keep the managed includes together, with no blank lines between them.
 include_pattern = re.compile(
-    r"^(automation|input_boolean|input_select|modbus|scene|script|template)\\s*:\\s*!include(?:_dir_[A-Za-z0-9_]+)?\\s+"
+    r"^(automation|input_boolean|input_select|modbus|scene|script|template)\s*:\s*!include(?:_dir_[A-Za-z0-9_]+)?\s+"
 )
 include_entries = []
 first_include_position = None
@@ -251,7 +251,7 @@ for line in lines:
     if match:
         if first_include_position is None:
             first_include_position = len(remaining_lines)
-        include_entries.append((match.group(1), line if line.endswith("\\n") else line + "\\n"))
+        include_entries.append((match.group(1), line if line.endswith("\n") else line + "\n"))
     else:
         remaining_lines.append(line)
 
