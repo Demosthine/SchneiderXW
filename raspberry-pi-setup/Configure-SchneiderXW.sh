@@ -168,6 +168,46 @@ def save_migrated(key, folder, default_name, shape):
 
     lines[start:end] = [f"{key}: {expected}\n"]
 
+# Preflight every migration before moving or writing any user configuration file.
+for key in ("automation", "input_boolean", "input_select", "modbus", "script", "template"):
+    folder, method, default_name, shape = folders[key]
+    bounds = section_bounds(key)
+    destination_dir = config_dir / folder
+    if bounds is None:
+        source = config_dir / default_name
+        if source.is_file() and (destination_dir / default_name).exists():
+            raise RuntimeError(f"Both {source} and {destination_dir / default_name} exist; resolve this duplicate before migration.")
+        continue
+    start, end = bounds
+    value = re.sub(rf"^{re.escape(key)}\\s*:", "", lines[start]).strip()
+    expected = f"!include_dir_{'merge_list' if shape == 'list' else 'merge_named'} {folder}/"
+    if value == expected:
+        continue
+    if value.startswith("!include_dir_"):
+        raise RuntimeError(f"{key}: already uses a different directory include ({value}); merge its files manually into {folder}/.")
+    include_match = re.fullmatch(r"!include\\s+['\\"]?([^'\\"]+?)['\\"]?", value)
+    if include_match:
+        source = (config_dir / include_match.group(1)).resolve()
+        if config_dir not in source.parents or not source.is_file():
+            raise RuntimeError(f"{key}: include source is missing or outside the config directory: {source}")
+        if (destination_dir / source.name).exists():
+            raise RuntimeError(f"{key}: migration target already exists: {destination_dir / source.name}")
+    elif value.startswith("!include"):
+        raise RuntimeError(f"{key}: unsupported include directive {value}; migrate it manually before rerunning.")
+    elif (destination_dir / "migrated-from-configuration.yaml").exists():
+        raise RuntimeError(f"{key}: migration target already exists: {destination_dir / 'migrated-from-configuration.yaml'}")
+
+recorder_bounds = section_bounds("recorder")
+if recorder_bounds is not None:
+    recorder_start, recorder_end = recorder_bounds
+    recorder_value = re.sub(r"^recorder\\s*:", "", lines[recorder_start]).strip()
+    if recorder_value:
+        raise RuntimeError(f"recorder: expected an inline mapping, found {recorder_value}; migrate that include manually.")
+    recorder_lines = lines[recorder_start:recorder_end]
+    for setting in ("purge_keep_days", "commit_interval"):
+        if sum(1 for line in recorder_lines if re.match(rf"^  {setting}\\s*:", line)) > 1:
+            raise RuntimeError(f"recorder contains duplicate {setting} entries.")
+
 # Migrate six sections. The order is stable and independent of dictionary order.
 for key in ("automation", "input_boolean", "input_select", "modbus", "script", "template"):
     folder, method, default_name, shape = folders[key]
