@@ -20,6 +20,10 @@ trap 'rc=$?; printf "\nERROR: Dashboard resource installer failed at line %s (ex
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 die() { log "ERROR: $*"; exit 1; }
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PLOTLY_HELPER="$SCRIPT_DIR/PlotlyGraphCard.sh"
+[[ -f "$PLOTLY_HELPER" ]] || die "Shared Plotly helper not found: $PLOTLY_HELPER"
+source "$PLOTLY_HELPER"
 
 [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]] ||
     die "Run this script with sudo from the normal user account."
@@ -74,10 +78,13 @@ if grep -Eq '^lovelace:' "$CONFIG_YAML"; then
     grep -Eq '^[[:space:]]{2}resource_mode:[[:space:]]*yaml([[:space:]]|$)' "$CONFIG_YAML" ||
         die "An existing lovelace: section does not already use resource_mode: yaml. No files or configuration were changed."
     for resource_url in "${RESOURCE_URLS[@]}"; do
+        [[ "$resource_url" == "$PLOTLY_GRAPH_CARD_RESOURCE" ]] && continue
         grep -Fq -- "- url: $resource_url" "$CONFIG_YAML" ||
             die "An existing lovelace: section is incomplete ($resource_url is missing). No files or configuration were changed."
     done
-    log "Existing YAML Lovelace configuration contains all eight required resources; it will be preserved."
+    plotly_matches="$(grep -Fc -- "- url: $PLOTLY_GRAPH_CARD_RESOURCE" "$CONFIG_YAML" || true)"
+    ((plotly_matches <= 1)) || die "Duplicate Plotly Lovelace resource entries found."
+    log "Existing YAML Lovelace configuration contains the other seven resources; Plotly will be added if missing."
 else
     log "No lovelace: section exists. The installer will add YAML resource mode after staging the files."
 fi
@@ -137,13 +144,17 @@ install_card "benjamin-dcs/gauge-card-pro" "gauge-card-pro.js" "gauge-card-pro.j
 install_card "NemesisRE/kiosk-mode" "kiosk-mode.js" "kiosk-mode.js"
 install_card "thomasloven/lovelace-layout-card" "layout-card.js" "layout-card.js"
 install_card "piitaya/lovelace-mushroom" "mushroom.js" "mushroom.js"
-install_card "dbuezas/lovelace-plotly-graph-card" "plotly-graph-card.js" "plotly-graph-card/plotly-graph-card.js"
+log "Staging complete Plotly Graph Card release $PLOTLY_GRAPH_CARD_VERSION."
+plotly_stage_release "$STAGE_DIR/plotly-graph-card" "$WORK_DIR"
 install_card "flixlix/power-flow-card-plus" "power-flow-card-plus.js" "power-flow-card-plus.js"
 install_card "j-a-n/lovelace-wallpanel" "wallpanel.js" "wallpanel.js"
 
-STAGED_COUNT="$(find "$STAGE_DIR" -type f | wc -l)"
-[[ "$STAGED_COUNT" -eq 8 ]] || die "Expected eight staged JavaScript files; found $STAGED_COUNT."
-log "All eight JavaScript resources were downloaded and verified."
+ROOT_STAGED_COUNT="$(find "$STAGE_DIR" -maxdepth 1 -type f -name '*.js' | wc -l)"
+PLOTLY_STAGED_COUNT="$(find "$STAGE_DIR/plotly-graph-card" -maxdepth 1 -type f -name '*.js' | wc -l)"
+[[ "$ROOT_STAGED_COUNT" -eq 7 ]] || die "Expected seven standalone dashboard JavaScript files; found $ROOT_STAGED_COUNT."
+[[ "$PLOTLY_STAGED_COUNT" -gt 0 ]] || die "No Plotly release JavaScript assets were staged."
+[[ -s "$STAGE_DIR/plotly-graph-card/plotly-graph-card.js" ]] || die "Plotly entry point is missing."
+log "All eight dashboard resources were staged; Plotly includes $PLOTLY_STAGED_COUNT release JavaScript assets."
 
 # Preserve any files that will be replaced.
 BACKUP_DIR="/var/backups/homeassistant-dashboard-resources-$(date +%Y%m%d-%H%M%S)"
@@ -165,6 +176,12 @@ while IFS= read -r -d '' staged_file; do
     log "Installed /local/$relative_path"
 done < <(find "$STAGE_DIR" -type f -print0)
 
+TARGET_GROUP="$(id -gn "$TARGET_USER")"
+chown "$TARGET_USER:$TARGET_GROUP" "$WWW_DIR/plotly-graph-card"
+find "$WWW_DIR/plotly-graph-card" -maxdepth 1 -type f -name '*.js' -exec chown "$TARGET_USER:$TARGET_GROUP" {} +
+chmod 0755 "$WWW_DIR/plotly-graph-card"
+find "$WWW_DIR/plotly-graph-card" -maxdepth 1 -type f -name '*.js' -exec chmod 0644 {} +
+
 if ((backup_count > 0)); then
     log "$backup_count existing resource file(s) backed up to $BACKUP_DIR."
 else
@@ -173,10 +190,20 @@ else
 fi
 
 CONFIG_BACKUP=""
-if ((HAS_LOVELACE == 0)); then
+if ((HAS_LOVELACE == 1)); then
+    if ! grep -Fq -- "- url: $PLOTLY_GRAPH_CARD_RESOURCE" "$CONFIG_YAML"; then
+        CONFIG_BACKUP="$CONFIG_YAML.backup.$(date +%Y%m%d-%H%M%S)"
+        cp -a "$CONFIG_YAML" "$CONFIG_BACKUP"
+        if ! plotly_ensure_lovelace_resource "$CONFIG_YAML"; then
+            cp -a "$CONFIG_BACKUP" "$CONFIG_YAML"
+            die "Could not safely register Plotly in configuration.yaml; original configuration restored."
+        fi
+    else
+        log "Existing Plotly Lovelace resource registration will be preserved."
+    fi
+else
     CONFIG_BACKUP="$CONFIG_YAML.backup.$(date +%Y%m%d-%H%M%S)"
     cp -a "$CONFIG_YAML" "$CONFIG_BACKUP"
-
     {
         printf '\n# Home Assistant dashboard resources managed by Install-HADashboardResources.sh\n'
         printf 'lovelace:\n'
@@ -186,10 +213,7 @@ if ((HAS_LOVELACE == 0)); then
             printf '    - url: %s\n      type: module\n' "$resource_url"
         done
     } >> "$CONFIG_YAML"
-
-    log "Registered all eight resources in configuration.yaml (backup: $CONFIG_BACKUP)."
-else
-    log "Preserved the existing complete Lovelace resource configuration."
+    log "Registered all eight dashboard resources in configuration.yaml (backup: $CONFIG_BACKUP)."
 fi
 
 log "Validating Home Assistant configuration."
