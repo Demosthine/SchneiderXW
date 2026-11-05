@@ -7,6 +7,7 @@
 # 4. Install Home Assistant and pause for first-run onboarding.
 # 5. Configure Samba.
 # 6. Pre-load dashboard resources and register them in configuration.yaml.
+# 7. Configure SchneiderXW YAML folders and wait for configuration-file downloads.
 #
 set -Eeuo pipefail
 
