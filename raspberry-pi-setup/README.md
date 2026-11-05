@@ -37,7 +37,7 @@ The master installer follows this sequence:
 4. **Install Home Assistant and onboard:** runs `Install-HomeAssistant.sh`, waits for Home Assistant to respond, and pauses so you can complete first-run onboarding in a browser.
 5. **Install Samba:** creates the private authenticated `HomeAssistant` share. On first setup it prompts for a Samba password; an existing Samba account/password is preserved.
 6. **Pre-load resources:** clones and stages the eight dashboard-card repositories, backs up replaced files, installs the JavaScript files under `~/homeassistant/config/www/`, and registers them in `configuration.yaml`.
-7. **Configure SchneiderXW:** creates the six YAML folders, migrates existing inline or single-file configuration for the corresponding Home Assistant domains, sets Recorder retention/commit settings, and waits while you download the SchneiderXW YAML files into their matching folders. It checks that every folder contains at least one non-empty YAML file and validates the Home Assistant configuration before the final restart.
+7. **Configure SchneiderXW:** creates the six YAML folders, migrates existing inline or single-file configuration for the corresponding Home Assistant domains, sets Recorder retention/commit settings, and waits while you download the SchneiderXW YAML files into their matching folders. It allows any of the folders to remain empty, since file usage varies by installation, and validates the Home Assistant configuration before the final restart.
 
 The installer does not silently switch an existing Lovelace storage configuration to YAML mode. Configuration-template downloads remain deferred. No unrelated repository files are changed and no automatic reboot is performed.
 
@@ -79,7 +79,7 @@ recorder:
 
 Existing inline configuration and supported single-file `!include` references for these six sections are migrated into the corresponding directory. Conventional `automations.yaml` and `scripts.yaml` files are also moved when their root section is absent. The original `configuration.yaml` is backed up before editing. Existing files are not overwritten; conflicting files or unsupported directory includes cause the script to stop for manual review.
 
-**Download step:** Open [Demosthine Schneider configuration files](https://www.demosthine.com/Schneider). Download the appropriate Home Assistant YAML files and place each in its matching folder listed above. The script waits for confirmation and checks that all six folders contain at least one non-empty `.yaml` or `.yml` file before running Home Assistant's configuration validation. It does not download the configuration files automatically. If validation fails, Home Assistant is not restarted; review the error and the configuration backup path printed in the log.
+**Download step:** Open [Demosthine Schneider configuration files](https://www.demosthine.com/Schneider). Download the appropriate Home Assistant YAML files and place each in its matching folder listed above. The script waits for confirmation that you have downloaded and placed the files needed for your installation. Any of the six folders may remain empty; the script does not require a YAML file in every folder. It does not download the configuration files automatically. If validation fails, Home Assistant is not restarted; review the error and the configuration backup path printed in the log.
 
 The script log is `/var/log/configure-schneiderxw.log`.
 
