@@ -71,6 +71,8 @@ RESOURCE_URLS=(
 HAS_LOVELACE=0
 if grep -Eq '^lovelace:' "$CONFIG_YAML"; then
     HAS_LOVELACE=1
+    grep -Eq '^[[:space:]]{2}resource_mode:[[:space:]]*yaml([[:space:]]|$)' "$CONFIG_YAML" ||
+        die "An existing lovelace: section does not already use resource_mode: yaml. No files or configuration were changed."
     for resource_url in "${RESOURCE_URLS[@]}"; do
         grep -Fq -- "- url: $resource_url" "$CONFIG_YAML" ||
             die "An existing lovelace: section is incomplete ($resource_url is missing). No files or configuration were changed."
