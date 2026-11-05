@@ -92,6 +92,7 @@ plotly_install_bundle_atomic() {
     mkdir -p "$parent"
     tmp="$(mktemp -d "$parent/.plotly-stage.XXXXXX")"
     if [[ -d "$target" ]]; then cp -a "$target/." "$tmp/"; fi
+    find "$tmp" -maxdepth 1 -type f -name '*.js' -delete
     find "$staged" -maxdepth 1 -type f -name '*.js' -exec install -m 0644 {} "$tmp/" \;
     chmod 0755 "$tmp"
     [[ -z "$owner" ]] || chown -R "$owner" "$tmp"
