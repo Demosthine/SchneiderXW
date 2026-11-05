@@ -94,7 +94,11 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
     $0 == end { skip=0; next }
     !skip { print }
 ' "$SMB_CONF" > "$TEMP_SMB"
-if grep -Eiq '^[[:space:]]*\\[HomeAssistant\\][[:space:]]*$' "$TEMP_SMB"; then
+if awk '{
+    line = tolower($0)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+    if (line == "[homeassistant]") found = 1
+} END { exit !found }' "$TEMP_SMB"; then
     rm -f "$TEMP_SMB"
     die "An unmanaged [HomeAssistant] Samba share already exists in $SMB_CONF. It was not overwritten; resolve that share before rerunning."
 fi
