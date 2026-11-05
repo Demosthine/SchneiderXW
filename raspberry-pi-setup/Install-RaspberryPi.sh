@@ -54,6 +54,35 @@ SUDO_USER="$TARGET_USER" bash "$HA_INSTALLER"
 
 [[ -d "$CONFIG_DIR" && -f "$COMPOSE_FILE" ]] || die "Home Assistant configuration directory or Compose file is missing after installation."
 
+CONFIG_YAML="$CONFIG_DIR/configuration.yaml"
+for ((attempt=1; attempt<=60; attempt++)); do
+    [[ -f "$CONFIG_YAML" ]] && break
+    sleep 2
+done
+[[ -f "$CONFIG_YAML" ]] || die "Home Assistant did not create $CONFIG_YAML."
+
+RESOURCE_URLS=(
+    /local/bubble-card.js
+    /local/gauge-card-pro.js
+    /local/kiosk-mode.js
+    /local/layout-card.js
+    /local/mushroom.js
+    /local/plotly-graph-card/plotly-graph-card.js
+    /local/power-flow-card-plus.js
+    /local/wallpanel.js
+)
+# Preflight existing Lovelace configuration before changing packages, Samba,
+# or card files. Storage-mode resources must be migrated deliberately.
+if grep -Eq '^lovelace:' "$CONFIG_YAML"; then
+    if ! grep -Eq '^[[:space:]]{2}resource_mode:[[:space:]]*yaml([[:space:]]|$)' "$CONFIG_YAML"; then
+        die "An existing lovelace: section does not already use resource_mode: yaml. The installer will not change existing dashboard/resource mode automatically."
+    fi
+    for resource_url in "${RESOURCE_URLS[@]}"; do
+        grep -Fq -- "- url: $resource_url" "$CONFIG_YAML" ||
+            die "Existing lovelace YAML resources are incomplete ($resource_url is missing). Back up and merge the missing entries manually, then rerun."
+    done
+fi
+
 # CUPS removal is destructive to printing functionality, so require an explicit
 # interactive confirmation. Non-interactive runs leave CUPS untouched.
 if [[ -t 0 ]]; then
@@ -236,31 +265,7 @@ fi
 # Register custom cards in configuration.yaml using YAML resource mode.
 # If a Lovelace section already exists, only accept a complete prior registration;
 # do not silently switch storage-mode resources or rewrite user dashboard settings.
-CONFIG_YAML="$CONFIG_DIR/configuration.yaml"
-for ((attempt=1; attempt<=60; attempt++)); do
-    [[ -f "$CONFIG_YAML" ]] && break
-    sleep 2
-done
-[[ -f "$CONFIG_YAML" ]] || die "Home Assistant did not create $CONFIG_YAML."
-
-RESOURCE_URLS=(
-    /local/bubble-card.js
-    /local/gauge-card-pro.js
-    /local/kiosk-mode.js
-    /local/layout-card.js
-    /local/mushroom.js
-    /local/plotly-graph-card/plotly-graph-card.js
-    /local/power-flow-card-plus.js
-    /local/wallpanel.js
-)
 if grep -Eq '^lovelace:' "$CONFIG_YAML"; then
-    if ! grep -Eq '^[[:space:]]{2}resource_mode:[[:space:]]*yaml([[:space:]]|$)' "$CONFIG_YAML"; then
-        die "An existing lovelace: section does not already use resource_mode: yaml. The installer will not change existing dashboard/resource mode automatically."
-    fi
-    for resource_url in "${RESOURCE_URLS[@]}"; do
-        grep -Fq -- "- url: $resource_url" "$CONFIG_YAML" ||
-            die "Existing lovelace YAML resources are incomplete ($resource_url is missing). Back up and merge the missing entries manually, then rerun."
-    done
     log "All eight JavaScript resources are already registered in configuration.yaml."
 else
     CONFIG_BACKUP="$CONFIG_YAML.backup.$(date +%Y%m%d-%H%M%S)"
