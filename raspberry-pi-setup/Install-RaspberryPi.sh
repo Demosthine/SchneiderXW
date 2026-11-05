@@ -31,7 +31,11 @@ TARGET_GROUP="$(id -gn "$TARGET_USER")"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 HA_INSTALLER="$SCRIPT_DIR/Install-HomeAssistant.sh"
-[[ -f "$HA_INSTALLER" ]] || die "Install-HomeAssistant.sh must be in the same directory. Clone the SchneiderXW repository and run this script from raspberry-pi-setup/."
+CUPS_INSTALLER="$SCRIPT_DIR/Remove-Cups.sh"
+TAILSCALE_INSTALLER="$SCRIPT_DIR/Install-Tailscale.sh"
+for required_script in "$HA_INSTALLER" "$CUPS_INSTALLER" "$TAILSCALE_INSTALLER"; do
+    [[ -f "$required_script" ]] || die "Required companion script is missing: $required_script"
+done
 
 . /etc/os-release
 case "${ID:-}" in raspbian|debian) ;; *) die "Expected Raspberry Pi OS or Debian; detected ID=${ID:-unknown}.";; esac
@@ -44,11 +48,36 @@ WWW_DIR="$CONFIG_DIR/www"
 COMPOSE_FILE="$HA_DIR/compose.yaml"
 
 log "Starting Raspberry Pi setup for user $TARGET_USER."
-log "The configuration-template pull is intentionally not part of this version."
+log "Configuration-template downloads are intentionally deferred."
 log "Installing Home Assistant with the existing installer."
 SUDO_USER="$TARGET_USER" bash "$HA_INSTALLER"
 
 [[ -d "$CONFIG_DIR" && -f "$COMPOSE_FILE" ]] || die "Home Assistant configuration directory or Compose file is missing after installation."
+
+# CUPS removal is destructive to printing functionality, so require an explicit
+# interactive confirmation. Non-interactive runs leave CUPS untouched.
+if [[ -t 0 ]]; then
+    printf '\nCUPS removal will uninstall printing services and printer-driver packages.\n'
+    read -r -p "Remove CUPS from this Raspberry Pi? [y/N]: " REMOVE_CUPS_ANSWER
+    if [[ "$REMOVE_CUPS_ANSWER" =~ ^[Yy]$ ]]; then
+        log "Running the CUPS removal script."
+        bash "$CUPS_INSTALLER"
+    else
+        log "CUPS removal was declined; the standalone script remains available."
+    fi
+else
+    log "Non-interactive session: CUPS removal was skipped. Run sudo bash ./Remove-Cups.sh separately if desired."
+fi
+
+# Tailscale is configured automatically only when its protected auth-key file
+# has already been provisioned. No key is created, printed, or stored by this script.
+if [[ -s /root/tailscale-authkey ]]; then
+    log "Found /root/tailscale-authkey; running the Tailscale subnet-router installer."
+    bash "$TAILSCALE_INSTALLER"
+else
+    log "No /root/tailscale-authkey found; Tailscale setup was skipped."
+    log "To include it, place a root-owned mode-600 auth key at /root/tailscale-authkey and rerun the master installer."
+fi
 
 log "Installing prerequisites for Samba and GitHub repository pulls."
 apt-get update
@@ -204,7 +233,55 @@ if ((backup_count > 0)); then
     log "$backup_count existing card file(s) were backed up to $BACKUP_DIR before replacement."
 fi
 
-# Restart Home Assistant so the new files are present before the user configures resources.
+# Register custom cards in configuration.yaml using YAML resource mode.
+# If a Lovelace section already exists, only accept a complete prior registration;
+# do not silently switch storage-mode resources or rewrite user dashboard settings.
+CONFIG_YAML="$CONFIG_DIR/configuration.yaml"
+for ((attempt=1; attempt<=60; attempt++)); do
+    [[ -f "$CONFIG_YAML" ]] && break
+    sleep 2
+done
+[[ -f "$CONFIG_YAML" ]] || die "Home Assistant did not create $CONFIG_YAML."
+
+RESOURCE_URLS=(
+    /local/bubble-card.js
+    /local/gauge-card-pro.js
+    /local/kiosk-mode.js
+    /local/layout-card.js
+    /local/mushroom.js
+    /local/plotly-graph-card/plotly-graph-card.js
+    /local/power-flow-card-plus.js
+    /local/wallpanel.js
+)
+if grep -Eq '^[[:space:]]*lovelace:[[:space:]]*(#.*)?$' "$CONFIG_YAML"; then
+    if ! grep -Eq '^[[:space:]]{2}resource_mode:[[:space:]]*yaml([[:space:]]|$)' "$CONFIG_YAML"; then
+        die "An existing lovelace: section does not already use resource_mode: yaml. The installer will not change existing dashboard/resource mode automatically."
+    fi
+    for resource_url in "${RESOURCE_URLS[@]}"; do
+        grep -Fq -- "- url: $resource_url" "$CONFIG_YAML" ||
+            die "Existing lovelace YAML resources are incomplete ($resource_url is missing). Back up and merge the missing entries manually, then rerun."
+    done
+    log "All eight JavaScript resources are already registered in configuration.yaml."
+else
+    CONFIG_BACKUP="$CONFIG_YAML.backup.$(date +%Y%m%d-%H%M%S)"
+    cp -a "$CONFIG_YAML" "$CONFIG_BACKUP"
+    {
+        printf '\n# Home Assistant dashboard resources managed by Install-RaspberryPi.sh\n'
+        printf 'lovelace:\n'
+        printf '  resource_mode: yaml\n'
+        printf '  resources:\n'
+        for resource_url in "${RESOURCE_URLS[@]}"; do
+            printf '    - url: %s\n      type: module\n' "$resource_url"
+        done
+    } >> "$CONFIG_YAML"
+    log "Added all eight dashboard resources to configuration.yaml (backup: $CONFIG_BACKUP)."
+    if ! docker compose -f "$COMPOSE_FILE" exec -T homeassistant python -m homeassistant --script check_config --config /config; then
+        cp -a "$CONFIG_BACKUP" "$CONFIG_YAML"
+        die "Home Assistant configuration validation failed. The original configuration.yaml was restored."
+    fi
+fi
+
+# Restart Home Assistant to load the new files and YAML-managed resources.
 log "Restarting Home Assistant."
 cd "$HA_DIR"
 docker compose restart homeassistant
@@ -240,16 +317,8 @@ if ((ready)); then
 else
     printf 'Home Assistant did not respond within 180 seconds. Check: cd "%s" && docker compose logs --tail=100 homeassistant\n' "$HA_DIR"
 fi
-printf '\nAfter onboarding, add these resources under Settings > Dashboards > Resources.\n'
-printf 'Set each resource type to JavaScript Module.\n'
-printf '  /local/bubble-card.js\n'
-printf '  /local/gauge-card-pro.js\n'
-printf '  /local/kiosk-mode.js\n'
-printf '  /local/layout-card.js\n'
-printf '  /local/mushroom.js\n'
-printf '  /local/plotly-graph-card/plotly-graph-card.js\n'
-printf '  /local/power-flow-card-plus.js\n'
-printf '  /local/wallpanel.js\n'
+printf '\nThe eight dashboard resources are configured in configuration.yaml using resource_mode: yaml.\n'
+printf 'If the installer found an existing incompatible Lovelace resource configuration, it stopped before changing it.\n'
 printf '\n'
 if [[ -t 0 ]]; then
     read -r -p "Complete Home Assistant onboarding in your browser, then press Enter to finish: " _
