@@ -103,15 +103,19 @@ def save_migrated(key, folder, default_name, shape):
     dest_dir = config_dir / folder
     dest_dir.mkdir(exist_ok=True)
     if bounds is None:
-        # Home Assistant's default files are migrated when present even if the
-        # corresponding root include was removed or commented out.
-        candidates = [config_dir / default_name]
-        existing = [p for p in candidates if p.is_file()]
-        if existing:
+        # Migrate a conventional standalone file if present, then add the directory include.
+        existing = config_dir / default_name
+        if existing.is_file():
             destination = dest_dir / default_name
             if destination.exists():
-                raise RuntimeError(f"Both {existing[0]} and {destination} exist; resolve this duplicate manually.")
-            shutil.move(str(existing[0]), str(destination))
+                raise RuntimeError(f"Both {existing} and {destination} exist; resolve this duplicate manually.")
+            shutil.move(str(existing), str(destination))
+        if lines and not lines[-1].endswith("\\n"):
+            lines[-1] += "\\n"
+        if lines and lines[-1].strip():
+            lines.append("\\n")
+        method = "merge_list" if shape == "list" else "merge_named"
+        lines.append(f"{key}: !include_dir_{method} {folder}/\\n")
         return
 
     start, end = bounds
