@@ -132,6 +132,122 @@ Home Assistant data is stored under `~/homeassistant/` with `compose.yaml` and a
 
 The script does not automatically remove conflicting Docker/containerd packages or overwrite an existing Compose file. It supports Bookworm and Trixie, on arm64 or armhf, and stops on other detected releases or architectures.
 
+## Connect from Windows for validation
+
+The simplest validation path is SSH from Windows Terminal or PowerShell. Keep the Pi and Windows PC on the same LAN for the initial connection.
+
+### 1. Find the Raspberry Pi's IP address
+
+Use one of these methods:
+
+- Check the router's DHCP/client list for the Pi hostname.
+- If mDNS is available on the network, try `ping raspberrypi.local` or the hostname configured in Raspberry Pi Imager.
+- If you have a monitor and keyboard attached to the Pi, sign in locally and run:
+
+```bash
+hostname -I
+ip -4 -br address
+```
+
+Use the Pi's LAN IPv4 address, not the router address.
+
+### 2. Ensure SSH is enabled
+
+For a new SD card, use Raspberry Pi Imager's OS customisation settings to set a username/password, hostname, network settings, and enable SSH before writing the card.
+
+For an already-running Pi with a local monitor/keyboard, enable SSH:
+
+```bash
+sudo systemctl enable --now ssh
+sudo systemctl status ssh --no-pager
+```
+
+If the `ssh` service is not installed, install the Raspberry Pi OS OpenSSH server package first:
+
+```bash
+sudo apt update
+sudo apt install -y openssh-server
+sudo systemctl enable --now ssh
+```
+
+### 3. Connect from Windows
+
+Open **Windows Terminal** or **PowerShell**:
+
+```powershell
+Test-NetConnection <PI-IP-ADDRESS> -Port 22
+ssh <LINUX-USERNAME>@<PI-IP-ADDRESS>
+```
+
+Replace both placeholders. On the first connection, verify the host fingerprint and type `yes`; then enter the Linux account password. The password is not displayed as you type.
+
+If Windows reports that `ssh` is not recognized, install the Windows OpenSSH Client from **Settings → System → Optional features → View features**, or run PowerShell as Administrator:
+
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0
+```
+
+### 4. Validate the installation on the Pi
+
+Run these commands in the SSH session:
+
+```bash
+hostnamectl
+cat /etc/os-release
+dpkg --print-architecture
+ip -4 -br address
+
+sudo systemctl is-active docker
+sudo systemctl is-active containerd
+sudo systemctl is-active smbd
+
+sudo docker compose -f ~/homeassistant/compose.yaml ps
+sudo docker compose -f ~/homeassistant/compose.yaml logs --tail=100 homeassistant
+
+sudo testparm -s
+sudo pdbedit -L
+ls -lh ~/homeassistant/config/www
+grep -n -A22 '^lovelace:' ~/homeassistant/config/configuration.yaml
+```
+
+If Tailscale was configured, also run:
+
+```bash
+sudo tailscale status
+sudo tailscale ip -4
+```
+
+A missing Tailscale service is expected when `/root/tailscale-authkey` was not provisioned and the master installer skipped that step.
+
+### 5. Test Home Assistant and Samba from Windows
+
+In PowerShell, check the two application ports:
+
+```powershell
+Test-NetConnection <PI-IP-ADDRESS> -Port 8123
+Test-NetConnection <PI-IP-ADDRESS> -Port 445
+```
+
+Then open `http://<PI-IP-ADDRESS>:8123` in a browser. Complete the Home Assistant onboarding if this is a new installation.
+
+In File Explorer, enter the share path:
+
+```text
+\\<PI-IP-ADDRESS>\HomeAssistant
+```
+
+Sign in with the Pi's Linux username and the Samba password created by the installer. Create a small test file, confirm it appears in `/home/<LINUX-USERNAME>/homeassistant/`, then delete the test file. Do not use Windows' saved credentials for a different username if authentication fails; remove the stale entry from **Credential Manager → Windows Credentials** and reconnect.
+
+### 6. Validate the YAML resources
+
+The installer registers the eight JavaScript modules in `configuration.yaml` and runs Home Assistant's configuration check before restarting when it creates that section. Confirm that all eight URLs are present:
+
+```bash
+grep -n -A22 '^lovelace:' ~/homeassistant/config/configuration.yaml
+```
+
+After Home Assistant is running, use a browser hard refresh (`Ctrl+Shift+R`) to clear cached JavaScript. If a card fails to load, inspect the browser developer console and Home Assistant logs; a file existing in `www/` alone does not prove the frontend successfully loaded it.
+
 ## Validation and logs
 
 - Supported OS: Raspberry Pi OS or Debian Bookworm/Trixie, arm64 or armhf.
