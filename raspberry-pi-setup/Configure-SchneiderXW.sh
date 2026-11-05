@@ -204,6 +204,12 @@ PY
 
 chown "$TARGET_USER:$(id -gn "$TARGET_USER")" "$CONFIG_YAML"
 chmod 0644 "$CONFIG_YAML"
+# Ensure files created or migrated here remain editable through the authenticated Samba share.
+for folder in Automations InputBooleans InputSelects ModBus503 Scripts Templates; do
+    chown -R "$TARGET_USER:$(id -gn "$TARGET_USER")" "$CONFIG_DIR/$folder"
+    setfacl -m "u:$TARGET_USER:rwx" "$CONFIG_DIR/$folder"
+    setfacl -d -m "u:$TARGET_USER:rwx" "$CONFIG_DIR/$folder"
+done
 
 printf '\nSchneiderXW configuration files are available here:\n'
 printf '  https://www.demosthine.com/Schneider\n\n'
