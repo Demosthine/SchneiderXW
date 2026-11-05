@@ -110,12 +110,12 @@ def save_migrated(key, folder, default_name, shape):
             if destination.exists():
                 raise RuntimeError(f"Both {existing} and {destination} exist; resolve this duplicate manually.")
             shutil.move(str(existing), str(destination))
-        if lines and not lines[-1].endswith("\\n"):
-            lines[-1] += "\\n"
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
         if lines and lines[-1].strip():
-            lines.append("\\n")
+            lines.append("\n")
         method = "merge_list" if shape == "list" else "merge_named"
-        lines.append(f"{key}: !include_dir_{method} {folder}/\\n")
+        lines.append(f"{key}: !include_dir_{method} {folder}/\n")
         return
 
     start, end = bounds
@@ -269,7 +269,9 @@ while true; do
     printf 'Download and organize the files, then answer Y.\n'
 done
 
-log "Download confirmation received. Empty folders are permitted; file placement depends on this installation."\n\nlog "Validating Home Assistant configuration."
+log "Download confirmation received. Empty folders are permitted; file placement depends on this installation."
+
+log "Validating Home Assistant configuration."
 if ! docker compose -f "$COMPOSE_FILE" exec -T homeassistant python -m homeassistant --script check_config --config /config; then
     die "Home Assistant configuration validation failed. The backup is available at $BACKUP. Review the reported YAML errors before restarting."
 fi
