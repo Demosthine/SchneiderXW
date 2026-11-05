@@ -112,8 +112,6 @@ def save_migrated(key, folder, default_name, shape):
             shutil.move(str(existing), str(destination))
         if lines and not lines[-1].endswith("\n"):
             lines[-1] += "\n"
-        if lines and lines[-1].strip():
-            lines.append("\n")
         method = "merge_list" if shape == "list" else "merge_named"
         lines.append(f"{key}: !include_dir_{method} {folder}/\n")
         return
@@ -238,6 +236,38 @@ else:
         else:
             block.append(f"  {setting}: {value}\n")
     lines[start:end] = block
+
+# Consolidate the top-level YAML include declarations in alphabetical order.
+# Keep the managed includes together, with no blank lines between them.
+include_pattern = re.compile(
+    r"^(automation|input_boolean|input_select|modbus|scene|script|template)\\s*:\\s*!include(?:_dir_[A-Za-z0-9_]+)?\\s+"
+)
+include_entries = []
+first_include_position = None
+remaining_lines = []
+
+for line in lines:
+    match = include_pattern.match(line)
+    if match:
+        if first_include_position is None:
+            first_include_position = len(remaining_lines)
+        include_entries.append((match.group(1), line if line.endswith("\\n") else line + "\\n"))
+    else:
+        remaining_lines.append(line)
+
+if include_entries:
+    include_entries.sort(key=lambda item: item[0])
+    remaining_lines[first_include_position:first_include_position] = [
+        line for _, line in include_entries
+    ]
+
+    # Avoid accumulating empty spacer lines left behind by moving declarations.
+    compact_lines = []
+    for line in remaining_lines:
+        if not line.strip() and compact_lines and not compact_lines[-1].strip():
+            continue
+        compact_lines.append(line)
+    lines = compact_lines
 
 config_file.write_text("".join(lines), encoding="utf-8")
 PY
