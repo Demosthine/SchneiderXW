@@ -11,7 +11,8 @@ Bash setup and maintenance scripts for Raspberry Pi OS. Scripts display output i
 | `Install-Tailscale.sh` | Configure the Pi as a Tailscale IPv4 /24 subnet router | `/var/log/install-tailscale.log` |
 | `Install-Docker.sh` | Install Docker Engine, containerd, and Docker Compose | `/var/log/install-docker.log` |
 | `Install-HomeAssistant.sh` | Deploy Home Assistant Container using the installed Docker Engine | `/var/log/install-homeassistant.log` |
-| `Install-HADashboardResources.sh` | Independently install and validate the eight dashboard JavaScript resources without reinstalling host services | `/var/log/install-ha-dashboard-resources.log` |
+| `Install-HADashboardResources.sh` | Independently install and validate the eight dashboard resources, including the complete pinned Plotly bundle | `/var/log/install-ha-dashboard-resources.log` |
+| `Install-PlotlyGraphCard.sh` | Independently install all JavaScript assets from Plotly Graph Card release `v4.0.2` and register its Lovelace resource | No persistent log file |
 | `Configure-SchneiderXW.sh` | Create SchneiderXW YAML folders, migrate existing configuration, set Recorder options, and validate downloaded configuration files | `/var/log/configure-schneiderxw.log` |
 
 ## Master installation
@@ -26,6 +27,8 @@ bash -n Remove-Cups.sh
 bash -n Install-Tailscale.sh
 bash -n Install-Docker.sh
 bash -n Install-HomeAssistant.sh
+bash -n PlotlyGraphCard.sh
+bash -n Install-PlotlyGraphCard.sh
 bash -n Install-HADashboardResources.sh
 bash -n Configure-SchneiderXW.sh
 sudo bash ./Install-RaspberryPi.sh
@@ -38,7 +41,7 @@ The master installer follows this sequence:
 3. **Install Docker:** runs `Install-Docker.sh` to install and enable Docker Engine, containerd, and Compose.
 4. **Install Home Assistant and onboard:** runs `Install-HomeAssistant.sh`, waits for Home Assistant to respond, and pauses so you can complete first-run onboarding in a browser.
 5. **Install Samba:** creates the private authenticated `HomeAssistant` share. On first setup it prompts for a Samba password; an existing Samba account/password is preserved.
-6. **Pre-load resources:** clones and stages the eight dashboard-card repositories, backs up replaced files, installs the JavaScript files under `~/homeassistant/config/www/`, and registers them in `configuration.yaml`.
+6. **Pre-load resources:** clones and stages the seven other dashboard-card repositories and downloads every JavaScript asset from Plotly Graph Card release `v4.0.2`. It validates the Plotly relative imports, backs up replaced files, installs the resources under `~/homeassistant/config/www/`, and registers them in `configuration.yaml`.
 7. **Configure SchneiderXW:** creates the six YAML folders, migrates existing inline or single-file configuration for the corresponding Home Assistant domains, sets Recorder retention/commit settings, and waits while you download the SchneiderXW YAML files into their matching folders. It allows any of the folders to remain empty, since file usage varies by installation, and validates the Home Assistant configuration before the final restart.
 
 The installer does not silently switch an existing Lovelace storage configuration to YAML mode. Configuration-template downloads remain deferred. No unrelated repository files are changed and no automatic reboot is performed.
@@ -151,7 +154,7 @@ lovelace:
       type: module
 ```
 
-**Existing Lovelace configuration:** The installer will not silently convert an existing storage-mode dashboard or merge into an existing partial Lovelace section. If it finds an existing `lovelace:` section that does not already contain all eight YAML resources, it stops and preserves the file. This avoids silently dropping resources that may be stored in Home Assistant's UI-managed storage. Existing YAML resources must be reviewed and migrated deliberately before rerunning.
+**Existing Lovelace configuration:** The installer will not silently convert an existing storage-mode dashboard or merge into an incompatible included Lovelace configuration. An existing root-level YAML Lovelace section must use `resource_mode: yaml` and already contain the seven non-Plotly dashboard resources. The installer adds the Plotly URL only when it is missing, and stops if the arrangement is incompatible or the Plotly URL is duplicated. This preserves all existing resource entries.
 
 Home Assistant's current documentation confirms that YAML-managed resources require `resource_mode: yaml`; the resources are loaded as JavaScript modules. After editing YAML, reload dashboard resources or restart Home Assistant. See [Home Assistant dashboard resources](https://www.home-assistant.io/dashboards/dashboards/) and [reload dashboard resources](https://www.home-assistant.io/actions/lovelace.reload_resources/).
 
@@ -180,16 +183,32 @@ The master installer handles Samba and resource preloading after the Home Assist
 
 ### Standalone dashboard resource installation
 
-To install or refresh the eight dashboard JavaScript resources after Home Assistant has already been installed and onboarded, run:
+To install or refresh the eight dashboard resources after Home Assistant has already been installed and onboarded, run:
 
 ```bash
 cd ~/SchneiderXW/raspberry-pi-setup
+bash -n PlotlyGraphCard.sh
+bash -n Install-PlotlyGraphCard.sh
 bash -n Install-HADashboardResources.sh
 sudo bash ./Install-HADashboardResources.sh
 ```
 
-This standalone script does not reinstall Docker, reconfigure Tailscale, modify Samba, or restart Home Assistant. It stages and verifies all eight downloads before installing them, backs up any replaced resource files, and backs up `configuration.yaml` before adding YAML resource mode when no top-level `lovelace:` section exists. If a `lovelace:` section already exists, it preserves it only when all eight resource URLs are already present; otherwise it stops without changing files. It runs Home Assistant's configuration check and does not restart Home Assistant. The log is `/var/log/install-ha-dashboard-resources.log`.
+The dashboard installer does not reinstall Docker, reconfigure Tailscale, modify Samba, or restart Home Assistant. It stages the seven other card resources and the complete Plotly `v4.0.2` JavaScript release bundle before installation. The Plotly bundle is downloaded and validated through the shared `PlotlyGraphCard.sh` helper, which is also used by the standalone Plotly installer. Existing Plotly JavaScript files are refreshed as a bundle; unrelated files in the Plotly directory are preserved. Replaced files are backed up, and Home Assistant configuration validation is run before completion. The log is `/var/log/install-ha-dashboard-resources.log`.
 
+### Standalone Plotly Graph Card installation
+
+To install or refresh only Plotly Graph Card, without running the other seven dashboard installers, run as the normal Home Assistant Linux account:
+
+```bash
+cd ~/SchneiderXW/raspberry-pi-setup
+bash -n PlotlyGraphCard.sh
+bash -n Install-PlotlyGraphCard.sh
+./Install-PlotlyGraphCard.sh
+```
+
+The installer retrieves the GitHub release metadata for `dbuezas/lovelace-plotly-graph-card` tag `v4.0.2`, downloads every `.js` release asset, validates the entry point and relative imports, and installs the bundle into `~/homeassistant/config/www/plotly-graph-card/`. It preserves non-JavaScript files in that directory, replaces the JavaScript bundle as a directory-level transaction, and registers `/local/plotly-graph-card/plotly-graph-card.js` as a Lovelace module without duplicating an existing registration. It does not require root when run by the Home Assistant directory owner, does not restart Home Assistant, and does not run a Home Assistant configuration check. If the existing Lovelace configuration uses an include or another unsupported arrangement, it stops and reports that a manual adjustment is required.
+
+Both installers use `PlotlyGraphCard.sh` for the pinned release download, import validation, and Lovelace resource handling. Update `PLOTLY_GRAPH_CARD_VERSION` in that shared helper deliberately when adopting a newer release.
 
 ### Install Docker and Home Assistant
 
