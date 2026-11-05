@@ -2,7 +2,7 @@
 #
 # Master Raspberry Pi setup sequence:
 # 1. Remove CUPS (with confirmation).
-# 2. Configure Tailscale when an auth key is provisioned.
+# 2. Configure Tailscale (hidden one-time key prompt only when needed).
 # 3. Install Docker.
 # 4. Install Home Assistant and pause for first-run onboarding.
 # 5. Configure Samba.
