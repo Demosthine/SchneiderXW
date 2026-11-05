@@ -18,14 +18,16 @@ trap 'rc=$?; printf "\nERROR: Script failed at line %s (exit %s). See %s\n" "$LI
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 die() { log "ERROR: $*"; exit 1; }
 
-AUTH_KEY_FILE="/root/tailscale-authkey"
+AUTH_KEY_FILE=""
 SYSCTL_FILE="/etc/sysctl.d/99-tailscale-subnet-router.conf"
 
 log "Starting Tailscale subnet-router setup."
-[[ -f "$AUTH_KEY_FILE" && ! -L "$AUTH_KEY_FILE" ]] || die "Required regular key file not found: $AUTH_KEY_FILE"
-[[ -s "$AUTH_KEY_FILE" ]] || die "The Tailscale authentication key file is empty."
-chown root:root "$AUTH_KEY_FILE"
-chmod 600 "$AUTH_KEY_FILE"
+cleanup_auth_key() {
+    if [[ -n "${AUTH_KEY_FILE:-}" && -f "$AUTH_KEY_FILE" ]]; then
+        rm -f -- "$AUTH_KEY_FILE"
+    fi
+}
+trap cleanup_auth_key EXIT
 
 if ! command -v ip >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
     apt-get update
@@ -68,9 +70,27 @@ try: print(json.load(sys.stdin).get("BackendState",""))
 except (json.JSONDecodeError,AttributeError): print("")')"
 
 if [[ "$BACKEND_STATE" == "Running" ]]; then
+    log "Tailscale is already authenticated; no auth key is needed."
     tailscale set --accept-routes=true --advertise-routes="$LAN_CIDR"
 else
+    [[ -r /dev/tty ]] || die "Tailscale needs an auth key, but no interactive terminal is available. Run this script from an interactive terminal."
+    printf '\nA one-time Tailscale authentication key is required for this device.\n' > /dev/tty
+    printf 'Paste the key (input is hidden): ' > /dev/tty
+    IFS= read -r -s AUTH_KEY </dev/tty || die "Could not read the Tailscale authentication key."
+    printf '\n' > /dev/tty
+    [[ -n "$AUTH_KEY" ]] || die "No Tailscale authentication key was entered."
+
+    umask 077
+    AUTH_KEY_FILE="$(mktemp /run/tailscale-authkey.XXXXXX)"
+    chown root:root "$AUTH_KEY_FILE"
+    chmod 600 "$AUTH_KEY_FILE"
+    printf '%s' "$AUTH_KEY" > "$AUTH_KEY_FILE"
+    unset AUTH_KEY
+
     tailscale up --auth-key="file:$AUTH_KEY_FILE" --accept-routes=true --advertise-routes="$LAN_CIDR"
+    rm -f -- "$AUTH_KEY_FILE"
+    AUTH_KEY_FILE=""
+    log "Tailscale authentication completed; the temporary key file was deleted."
 fi
 
 log "Tailscale status:"
