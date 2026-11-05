@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 #
-# Master Raspberry Pi setup:
-# - Install Home Assistant using the maintained companion installer.
-# - Configure a private Samba share for ~/homeassistant.
-# - Clone and install the requested Home Assistant dashboard JavaScript cards.
+# Master Raspberry Pi setup sequence:
+# 1. Remove CUPS (with confirmation).
+# 2. Configure Tailscale when an auth key is provisioned.
+# 3. Install Docker.
+# 4. Install Home Assistant and pause for first-run onboarding.
+# 5. Configure Samba.
+# 6. Pre-load dashboard resources and register them in configuration.yaml.
 #
 set -Eeuo pipefail
 
@@ -30,10 +33,11 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 TARGET_GROUP="$(id -gn "$TARGET_USER")"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-HA_INSTALLER="$SCRIPT_DIR/Install-HomeAssistant.sh"
 CUPS_INSTALLER="$SCRIPT_DIR/Remove-Cups.sh"
 TAILSCALE_INSTALLER="$SCRIPT_DIR/Install-Tailscale.sh"
-for required_script in "$HA_INSTALLER" "$CUPS_INSTALLER" "$TAILSCALE_INSTALLER"; do
+DOCKER_INSTALLER="$SCRIPT_DIR/Install-Docker.sh"
+HA_INSTALLER="$SCRIPT_DIR/Install-HomeAssistant.sh"
+for required_script in "$CUPS_INSTALLER" "$TAILSCALE_INSTALLER" "$DOCKER_INSTALLER" "$HA_INSTALLER"; do
     [[ -f "$required_script" ]] || die "Required companion script is missing: $required_script"
 done
 
@@ -318,7 +322,7 @@ printf 'Dashboard JavaScript files: %s\n' "$WWW_DIR"
 printf 'Master log: %s\n' "$LOG"
 printf '\n'
 if ((ready)); then
-    printf 'Home Assistant is responding. Open the URL above to complete onboarding.\n'
+    printf 'Home Assistant is responding.\n'
 else
     printf 'Home Assistant did not respond within 180 seconds. Check: cd "%s" && docker compose logs --tail=100 homeassistant\n' "$HA_DIR"
 fi
