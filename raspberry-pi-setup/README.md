@@ -30,7 +30,7 @@ sudo bash ./Install-RaspberryPi.sh
 The master installer follows this sequence:
 
 1. **Remove CUPS:** asks for explicit interactive confirmation before uninstalling printing services and printer-driver packages. A non-interactive run skips this step.
-2. **Install Tailscale:** runs `Install-Tailscale.sh` when `/root/tailscale-authkey` exists and is non-empty; otherwise Tailscale is skipped.
+2. **Install Tailscale:** runs `Install-Tailscale.sh`. If the Pi is already authenticated, it configures the subnet route without requesting a key. Otherwise, it prompts for a one-time authentication key with terminal input hidden.
 3. **Install Docker:** runs `Install-Docker.sh` to install and enable Docker Engine, containerd, and Compose.
 4. **Install Home Assistant and onboard:** runs `Install-HomeAssistant.sh`, waits for Home Assistant to respond, and pauses so you can complete first-run onboarding in a browser.
 5. **Install Samba:** creates the private authenticated `HomeAssistant` share. On first setup it prompts for a Samba password; an existing Samba account/password is preserved.
@@ -46,18 +46,22 @@ The CUPS script purges installed CUPS/printer-driver packages, stops and disable
 
 ### Tailscale setup
 
-To have the master installer configure Tailscale, first create an auth key and store it at `/root/tailscale-authkey` with root ownership and mode 600:
+Before running the installer, create a **one-time** authentication key in the Tailscale admin console under **Settings → Keys**: https://login.tailscale.com/admin/settings/keys
 
-```bash
-sudo install -o root -g root -m 600 /dev/null /root/tailscale-authkey
-sudo nano /root/tailscale-authkey
-```
+Recommended key settings for this Raspberry Pi:
 
-Paste the auth key into the file without adding it to GitHub or the installer. The master script detects the file and runs `Install-Tailscale.sh`. The standalone Tailscale installer detects the default IPv4 interface and LAN subnet, and stops unless the subnet is /24. It enables IPv4/IPv6 forwarding and configures Tailscale to advertise the LAN route.
+- **Reusable:** Off (one-time use).
+- **Ephemeral:** Off. This is a persistent server, not a short-lived workload.
+- **Pre-approved:** On if your tailnet requires device approval.
+- **Expiration:** A short validity window, such as one day. The one-time key is revoked after successful use; the device remains authenticated using its own node identity.
+
+When the master installer reaches the Tailscale step, paste the key at the hidden terminal prompt. The key is not echoed, logged, committed to GitHub, or saved as a persistent file. The installer writes it briefly to a root-only temporary file under `/run` and deletes that file immediately after successful enrollment; an exit cleanup also removes it if setup fails.
+
+If the Pi is already authenticated with Tailscale, no key is requested. The script simply configures the advertised LAN route. The standalone installer follows the same behavior. It detects the default IPv4 interface and LAN subnet, and stops unless the subnet is /24. It enables IPv4/IPv6 forwarding and configures Tailscale to advertise the LAN route.
 
 **Manual step:** Approve the advertised subnet route in the Tailscale admin console unless your tailnet policy automatically approves it: https://login.tailscale.com/admin/machines
 
-Remove the auth key file after enrollment if it is no longer needed. The key file is never copied into the repository.
+Do not put authentication keys in the repository, script source, shell command line, or a permanent file.
 
 ### Dashboard resources in configuration.yaml
 
@@ -220,7 +224,7 @@ sudo tailscale status
 sudo tailscale ip -4
 ```
 
-A missing Tailscale service is expected when `/root/tailscale-authkey` was not provisioned and the master installer skipped that step.
+Tailscale should be active after the installer configures it. If setup was not run or authentication was declined, inspect `/var/log/install-tailscale.log` and rerun `sudo bash ./Install-Tailscale.sh` from an interactive terminal.
 
 ### 5. Test Home Assistant and Samba from Windows
 
