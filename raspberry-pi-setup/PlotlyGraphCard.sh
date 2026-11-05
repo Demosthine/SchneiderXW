@@ -86,7 +86,7 @@ PY
 }
 
 plotly_install_bundle_atomic() {
-    local staged="$1" target="$2" owner="\${3:-}"
+    local staged="$1" target="$2" owner="${3:-}"
     local parent tmp backup=""
     parent="$(dirname "$target")"
     mkdir -p "$parent"
