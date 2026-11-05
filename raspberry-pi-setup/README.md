@@ -263,9 +263,10 @@ Check shell syntax before execution:
 
 ```bash
 bash -n Install-RaspberryPi.sh
-bash -n Install-HomeAssistant.sh
-bash -n Install-Tailscale.sh
 bash -n Remove-Cups.sh
+bash -n Install-Tailscale.sh
+bash -n Install-Docker.sh
+bash -n Install-HomeAssistant.sh
 ```
 
 A successful `bash -n` check verifies shell syntax only. It does not verify package installation, Docker deployment, Tailscale route approval, Samba access, or Home Assistant startup.
