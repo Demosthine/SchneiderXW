@@ -333,6 +333,7 @@ bash -n Remove-Cups.sh
 bash -n Install-Tailscale.sh
 bash -n Install-Docker.sh
 bash -n Install-HomeAssistant.sh
+bash -n Install-HADashboardResources.sh
 bash -n Configure-SchneiderXW.sh
 ```
 
