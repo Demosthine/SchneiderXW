@@ -37,7 +37,8 @@ CUPS_INSTALLER="$SCRIPT_DIR/Remove-Cups.sh"
 TAILSCALE_INSTALLER="$SCRIPT_DIR/Install-Tailscale.sh"
 DOCKER_INSTALLER="$SCRIPT_DIR/Install-Docker.sh"
 HA_INSTALLER="$SCRIPT_DIR/Install-HomeAssistant.sh"
-for required_script in "$CUPS_INSTALLER" "$TAILSCALE_INSTALLER" "$DOCKER_INSTALLER" "$HA_INSTALLER"; do
+SCHNEIDER_INSTALLER="$SCRIPT_DIR/Configure-SchneiderXW.sh"
+for required_script in "$CUPS_INSTALLER" "$TAILSCALE_INSTALLER" "$DOCKER_INSTALLER" "$HA_INSTALLER" "$SCHNEIDER_INSTALLER"; do
     [[ -f "$required_script" ]] || die "Required companion script is missing: $required_script"
 done
 
@@ -318,7 +319,11 @@ else
     fi
 fi
 
-# Restart Home Assistant to load the new files and YAML-managed resources.
+# Step 7: Configure SchneiderXW YAML folders and wait for the user's file-download confirmation.
+log "Step 7/7: Configuring SchneiderXW Home Assistant YAML folders."
+MASTER_INSTALLER=1 SUDO_USER="$TARGET_USER" bash "$SCHNEIDER_INSTALLER"
+
+# Restart Home Assistant once to load dashboard resources and SchneiderXW configuration.
 log "Restarting Home Assistant."
 cd "$HA_DIR"
 docker compose restart homeassistant
